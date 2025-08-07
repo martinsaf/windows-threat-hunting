@@ -1,6 +1,3 @@
-### ✅ `hunting.ps1` — Scripts
-
-```powershell
 # Hunting Metasploit - Network connections to suspicious ports
 # Sysmon Event ID 3
 
@@ -23,4 +20,3 @@ Get-WinEvent -Path ".\Hunting_Metasploit.evtx" -FilterXPath '*/System/EventID=3 
             ProcessID       = $xml.Event.EventData.Data[10].'#text'
         }
     }
-```
