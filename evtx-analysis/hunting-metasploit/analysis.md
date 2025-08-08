@@ -114,8 +114,8 @@ This activity shows typical Metasploit behavior involving a reverse shell payloa
 ## Process Creation Analysis (Event ID 1)
 
 ```powershell
-# Correlating with process creation event for PID 3360
-$ProcessId = 3360
+# Correlating with process creation event for PID 3660
+$ProcessId = 3660
 Get-WinEvent -Path .\Hunting_Metasploit_1609814643558.evtx -FilterXPath "*/System/EventID=1 and */EventData/Data[@Name='ProcessId']='$ProcessId'" |
     ForEach-Object {
         [xml]$xml = $_.ToXml()
@@ -129,6 +129,8 @@ Get-WinEvent -Path .\Hunting_Metasploit_1609814643558.evtx -FilterXPath "*/Syste
             ParentProcess = $data["ParentProcessName"]
             User          = $data["User"]
             ProcessPath   = $data["Image"]
+            Hashes        = $data["Hashes"]
+            ParentCommandLine = $data["ParentCommandLine"]
         }
     }
 ```
@@ -140,14 +142,22 @@ Get-WinEvent -Path .\Hunting_Metasploit_1609814643558.evtx -FilterXPath "*/Syste
 - CommandLine: .\shell.exe
 - User: THM\THM-Threat
 - ProcessPath: C:\Users\THM-Threat\Downloads\shell.exe
+- Hashes:
+```text
+MD5=FC03EB95876A310DF9D63477F0ADDDFD,SHA256=84C5E6C0C6AF4C25DCD89362723A574D8514B5B88B25AF18750DA56
+B497F8EA8,IMPHASH=481F47BBB2C9C21E108D65F52B04C448
+```
+- ParentCommandLine: "C:\Windows\system32\cmd.exe"
 - ParentProcess : `(Not visible in logs)`
 
 --- 🧩 Enhanced Interpretation
 
-The process creation event reveals that:
-1. The binary was executed directly from the Downloads folder (common infection vector)
-2. No parent was logged (suggesting direct execution by user or log limitation)
-3. The 3-second gap between execution and network connection matches typical Metasploit payload behavior
+1. Execution Content:
+     - Launched from command prompt in Downloads folder
+     - No suspicious command-line arguments
+2. Binary Analysis
+     - 
+
 
 --- 🛠️ Updated Hunting Script
 
