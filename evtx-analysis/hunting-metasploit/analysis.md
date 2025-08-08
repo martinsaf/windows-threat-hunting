@@ -111,12 +111,53 @@ This activity shows typical Metasploit behavior involving a reverse shell payloa
 
 ---
 
-## 🔍 Limitações Reconhecidas
-- **Análise não correlacionada**: Foca apenas em Event ID 3 sem vincular a outros eventos do mesmo PID
-- **Cobertura temporal**: Dataset pode não capturar atividade pré/pós-exploração
-- **Falsos negativos**: Ausência de eventos de persistência não significa que não existiram
+## Process Creation Analysis (Event ID 1)
 
-## 🚩 Próximos Passos Recomendados
-1. Correlacionar com Event ID 1 (Process Create) para o PID 3660
-2. Verificar Event ID 11 (File Create) para `shell.exe`
-3. Caçar eventos 5min antes/depois na timeline
+```powershell
+# Correlating with process creation event for PID 3360
+$ProcessId = 3360
+Get-WinEvent -Path .\Hunting_Metasploit_1609814643558.evtx -FilterXPath "*/System/EventID=1 and */EventData/Data[@Name='ProcessId']='$ProcessId'" |
+    ForEach-Object {
+        [xml]$xml = $_.ToXml()
+        $data = @{}
+        foreach ($d in $xml.Event.EventData.Data) {
+            $data[$d.Name] = $d.'#text'
+        }
+        [PSCustomObject]@{
+            Timestamp     = $_.TimeCreated
+            CommandLine   = $data["CommandLine"]
+            ParentProcess = $data["ParentProcessName"]
+            User          = $data["User"]
+            ProcessPath   = $data["Image"]
+        }
+    }
+```
+
+---
+
+📌 Process Creation Findings
+- Timestamp: 1/5/2021 2:21:29 AM
+- CommandLine: .\shell.exe
+- User: THM\THM-Threat
+- ProcessPath: C:\Users\THM-Threat\Downloads\shell.exe
+- ParentProcess : `(Not visible in logs)`
+
+--- 🧩 Enhanced Interpretation
+
+The process creation event reveals that:
+1. The binary was executed directly from the Downloads folder (common infection vector)
+2. No parent was logged (suggesting direct execution by user or log limitation)
+3. The 3-second gap between execution and network connection matches typical Metasploit payload behavior
+
+--- 🛠️ Updated Hunting Script
+
+```powershell
+
+```
+
+---
+
+📌 Enhanced Key Findings
+
+
+
