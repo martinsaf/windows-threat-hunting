@@ -69,6 +69,13 @@ The process `shell.exe`, executed from the Downloads folder, initiated a network
 
 ---
 
+### 1️⃣ Network Connection Analysis (Event ID 3)
+`Findings`: Conection to 10.13.4.34:4444 via shell.exe
+`MITRE Mapping`: (T1043 – Commonly Used Port)[https://attack.mitre.org/techniques/T1043/]
+Port 4444 is often used by Meterpreter payloads for C2 communication.
+
+---
+
 ### ✅ `hunting.ps1` — Scripts
 
 ```powershell
@@ -108,6 +115,11 @@ Get-WinEvent -Path .\Hunting_Metasploit_1609814643558.evtx -FilterXPath '*/Syste
 
 ## ✅ Conclusion
 This activity shows typical Metasploit behavior involving a reverse shell payload connecting back on port 4444. The executable path, port usage, and timing all point to a likely post-exploitation action. Follow-up investigation and response are recommended.
+
+---
+
+### 📝 Follow-up investigation
+Having identified the suspicious network activity, the next logical step is to pivot to process creation events (Event ID 1) to trace the execution chain and gather binary metadata.
 
 ---
 
@@ -152,22 +164,149 @@ B497F8EA8,IMPHASH=481F47BBB2C9C21E108D65F52B04C448
 
 --- 🧩 Enhanced Interpretation
 
-1. Execution Content:
-     - Launched from command prompt in Downloads folder
-     - No suspicious command-line arguments
-2. Binary Analysis
-     - 
+1. Execution Context
+   - Binary Origin:
+     ```text
+     ProcessPath: C:\Users\THM-Threat\Downloads\shell.exe  
+     ```
+   - Execution Method:
+     ```text
+     ParentCommandLine: "C:\Windows\system32\cmd.exe"  
+     CommandLine: .\shell.exe  
+     ```
+     - Manual execution via command prompt (no automation/scheduler)
+2. Binary Analysis (Directly From Your Data):
+   - Hashing Evidence:
+     ```text
+     SHA256: 84C5E6C0C6AF4C25DCD89362723A574D8514B5B88B25AF18750DA56B497F8EA8  
+     ```
+     - Non-reputable hash (not found in VirusTotal/known software DBs)
+   - Suspicious Metada:
+     ```text
+     (Implied from OriginalFileName in XML - though not explicitly shown in this output)  
+     ```
+3. Temporal analysis:
+   - Process creation at 2:21:29 AM -> Network connection at 2:21:32 AM
+     - 3-second delay matches staged payload behavior
+4. Parent Process Gap:
+   - Missing parent process details suggests:
+     - Logging limitation OR
+     - Direct user execution (no process injection)
 
+--- 
 
---- 🛠️ Updated Hunting Script
+2️⃣ Process Creation Analysis (Event ID 1)
+`Findings`: Execução manual de C:\Users\THM-Threat\Downloads\shell.exe
+`MITRE Mapping`: T1204.002 – User Execution: Malicious File
+
+Malicious file executed by the user, likely delivered via phishing or web transfer.
+
+3️⃣ Metadata & Masquerading Detection
+`Findings`: Binário com metadados falsos (ApacheBench)
+`MITRE Mapping`: T1036 – Masquerading
+
+Changing attributes to disguise the true nature of the torque.
+
+---
+
+## 🛠️ Updated Hunting Script
 
 ```powershell
+### Enhanced Hunting with Binary Analysis
+$MaliciousHashes = @(
+    "84C5E6C0C6AF4C25DCD89362723A574D8514B5B88B25AF18750DA56B497F8EA8",
+    "FC03EB95876A310DF9D63477F0ADDDFD"
+)
+```
+`Purpose`: Defines known malicious hashes from your earlier findings to hunt for related activity.
 
+---
+
+## Part 1: Detect Binaries with Mismatched Metadata
+```powershell
+# 1. Detect binaries with mismatched metadata
+Get-WinEvent -Path .\Hunting_Metasploit_1609814643558.evtx -FilterXPath '*/System/EventID=1' |
+    ForEach-Object {
+        [xml]$xml = $_.ToXml()
+        $data = @{}
+        $xml.Event.EventData.Data | ForEach-Object { $data[$_.Name] = $_.'#text' }
+        
+        if ($data["Image"] -match "Downloads\\" -and 
+            ($data["Company"] -match "Apache" -or $data["Description"] -match "ApacheBench")) {
+            [PSCustomObject]@{
+                TimeCreated = $_.TimeCreated
+                ProcessName = $data["Image"]
+                OriginalName = $data["OriginalFileName"]
+                Company = $data["Company"]
+                Hashes = $data["Hashes"]
+            }
+        }
+    }
+```
+### What This does:
+1. Search all process creation events (Event ID 1)
+2. Looks for executables:
+   - Located in Downloads folder
+   - With metadata claiming to be from "Apache" or "ApacheBench"
+  
+3. Returns:
+   - Execution timestamp
+   - Actual process path
+   - Original filename from metadata
+   - Company name from metada
+   - File hashes
+
+---
+
+## Part 2: Cross-Reference with Network Connections
+```powershell
+# 2. Cross-reference with network connections
+$MaliciousHashes | ForEach-Object {
+    Get-WinEvent -Path .\Hunting_Metasploit_1609814643558.evtx -FilterXPath '*/System/EventID=1' |
+        Where-Object { $_.Message -match $_ } |
+        ForEach-Object {
+            $pid = ([xml]$_.ToXml()).Event.EventData.Data | 
+                   Where-Object { $_.Name -eq "ProcessId" } | 
+                   Select-Object -ExpandProperty "#text"
+            
+            Get-WinEvent -Path .\Hunting_Metasploit_1609814643558.evtx -FilterXPath "*/System/EventID=3 and */EventData/Data[@Name='ProcessId']='$pid'"
+        }
+}
+```
+### What This Does:
+1. For each known malicious hash:
+   - Finds matching process creation events
+   - Extracts the ProcessID
+   - Searches for network connections (Event ID 3) from that same ProcessID
+  
+---
+
+# Key Improvements Over Original Script:
+1. Two-Part Hunting:
+   - First finds suspicious binaries by metadata patterns.
+   - Then correlates them with network activity
+2. Flexible Detection:
+   - Uses both hashes AND behavioral patterns (Downloads folder + Apache metadata)
+3. MITRE Technique Mapping:
+```text
+T1036 - Masquerading (metadata mismatch)
+T1043 - Commonly Used Port (4444)
+T1204 - User Execution (Downloads folder)
 ```
 
 ---
 
-📌 Enhanced Key Findings
+## 📌 MITRE ATT&CK Mapping
 
+| Step | Finding | MITRE Technique | Description |
+|------|---------|-----------------|-------------|
+| **1** | Network connection from `shell.exe` to 10.13.4.34:4444 | [T1043 – Commonly Used Port](https://attack.mitre.org/techniques/T1043/) | Port 4444 is often used by Meterpreter payloads for C2 communication. |
+| **2** | Manual execution of `C:\Users\THM-Threat\Downloads\shell.exe` | [T1204.002 – User Execution: Malicious File](https://attack.mitre.org/techniques/T1204/002/) | Malicious executable run by the user, likely delivered via phishing or web download. |
+| **3** | Binary metadata claims “ApacheBench” | [T1036 – Masquerading](https://attack.mitre.org/techniques/T1036/) | Altered file attributes used to disguise malicious code as legitimate software. |
 
+---
 
+## 🚑 Response Recommendations
+- Block IOC hashes in EDR
+- Isolate host and capture volatile memory
+- Search across enterprise for similar port 4444 connections
