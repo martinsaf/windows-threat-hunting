@@ -108,3 +108,15 @@ Get-WinEvent -Path .\Hunting_Metasploit_1609814643558.evtx -FilterXPath '*/Syste
 
 ## ✅ Conclusion
 This activity shows typical Metasploit behavior involving a reverse shell payload connecting back on port 4444. The executable path, port usage, and timing all point to a likely post-exploitation action. Follow-up investigation and response are recommended.
+
+---
+
+## 🔍 Limitações Reconhecidas
+- **Análise não correlacionada**: Foca apenas em Event ID 3 sem vincular a outros eventos do mesmo PID
+- **Cobertura temporal**: Dataset pode não capturar atividade pré/pós-exploração
+- **Falsos negativos**: Ausência de eventos de persistência não significa que não existiram
+
+## 🚩 Próximos Passos Recomendados
+1. Correlacionar com Event ID 1 (Process Create) para o PID 3660
+2. Verificar Event ID 11 (File Create) para `shell.exe`
+3. Caçar eventos 5min antes/depois na timeline
