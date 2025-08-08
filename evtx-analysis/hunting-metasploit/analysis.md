@@ -162,7 +162,7 @@ B497F8EA8,IMPHASH=481F47BBB2C9C21E108D65F52B04C448
 - ParentCommandLine: "C:\Windows\system32\cmd.exe"
 - ParentProcess : `(Not visible in logs)`
 
---- 🧩 Enhanced Interpretation
+### 🧩 Enhanced Interpretation
 
 1. Execution Context
    - Binary Origin:
