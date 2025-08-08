@@ -14,9 +14,9 @@ We focused on identifying network connections to suspicious ports (e.g., 4444, 5
 
 ## 📁 Dataset
 
-File: `Hunting_Metasploit.evtx`
-Event Source: Sysmon
-Tool used: `Get-WinEvent` with XPath
+- File: `Hunting_Metasploit.evtx`
+- Event Source: Sysmon
+- Tool used: `Get-WinEvent` with XPath
 
 ---
 
@@ -72,16 +72,18 @@ The process `shell.exe`, executed from the Downloads folder, initiated a network
 ### ✅ `hunting.ps1` — Scripts
 
 ```powershell
-# Hunting Metasploit - Network connections to suspicious ports
-# Sysmon Event ID 3
+### Hunting Metasploit - Network connections to suspicious ports
+### Using Sysmon Event ID 3
 
-# Show all available event IDs in the log
-Get-WinEvent -Path ".\Hunting_Metasploit.evtx" |
+# Step 1: List all Event IDs found in the log file
+# Helps us understand what types of activity are recorded
+Get-WinEvent -Path ".\Hunting_Metasploit_1609814643558.evtx" |
     Group-Object Id |
     Sort-Object Count -Descending |
     Format-Table Count, Name -AutoSize
 
-# Filter only network connections to port 4444
+# Step 2: Hunt for connections to suspicious ports (e.g. 4444 - commonly used by Metasploit)
+# This filters only Event ID 3 (network connections) and where the destination port is 4444
 Get-WinEvent -Path .\Hunting_Metasploit_1609814643558.evtx -FilterXPath '*/System/EventID=3 and */EventData/Data[@Name="DestinationPort"] and */EventData/Data=4444' |
      ForEach-Object {
          [xml]$xml = $_.ToXml()
