@@ -163,6 +163,7 @@ PS C:\Users\THM-Analyst> Get-WinEvent -Path  C:\Users\THM-Analyst\Desktop\Scenar
 
 # Event Correlation
 Extracted Data from Event ID 10
+
 Field              Value
 ---
 **TimeStamp**      2021-01-05 03:22:52 (UTC)
