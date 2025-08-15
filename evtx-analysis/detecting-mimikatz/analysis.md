@@ -283,5 +283,205 @@ Get-WinEvent -Path "C:\Users\THM-Analyst\Desktop\Scenarios\Practice\Hunting_Mimi
 **Results**:
 ```xml
 <Event xmlns='http://schemas.microsoft.com/win/2004/08/events/event'>
-<System><Provider Name='Microsoft-Windows-Sysmon' Guid='{5770385f-c22a-43e0-bf4c-06f5698ffbd9}'/><EventID>10</EventID><Version>3</Version><Level>4</Level><Task>10</Task><Opcode>0</Opcode><Keywords>0x8000000000000000</Keywords><TimeCreated SystemTime='2021-01-05T03:22:52.589622600Z'/><EventRecordID>51901</EventRecordID><Correlation/><Execution ProcessID='1376' ThreadID='6928'/><Channel>Microsoft-Windows-Sysmon/Operational</Channel><Computer>THM-SOC-DC01.thm.soc</Computer><Security UserID='S-1-5-18'/></System><EventData><Data Name='RuleName'>-</Data><Data Name='UtcTime'>2021-01-05 03:22:52.581</Data><Data Name='SourceProcessGUID'>{6cd1ea62-db8c-5ff3-8b07-00000000f500}</Data><Data Name='SourceProcessId'>3604</Data><Data Name='SourceThreadId'>4292</Data><Data Name='SourceImage'>C:\Users\THM-Threat\Downloads\mimikatz.exe</Data><Data Name='TargetProcessGUID'>{6cd1ea62-b769-5fef-0c00-00000000f500}</Data><Data Name='TargetProcessId'>744</Data><Data Name='TargetImage'>C:\Windows\system32\lsass.exe</Data><Data Name='GrantedAccess'>0x1010</Data><Data Name='CallTrace'>C:\Windows\SYSTEM32\ntdll.dll+9f644|C:\Windows\System32\KERNELBASE.dll+212ae|C:\Users\THM-Threat\Downloads\mimikatz.exe+bcbda|C:\Users\THM-Threat\Downloads\mimikatz.exe+bcfb1|C:\Users\THM-Threat\Downloads\mimikatz.exe+bcb19|C:\Users\THM-Threat\Downloads\mimikatz.exe+84f28|C:\Users\THM-Threat\Downloads\mimikatz.exe+84d60|C:\Users\THM-Threat\Downloads\mimikatz.exe+84a93|C:\Users\THM-Threat\Downloads\mimikatz.exe+c39a9|C:\Windows\System32\KERNEL32.DLL+17974|C:\Windows\SYSTEM32\ntdll.dll+5a0b1</Data></EventData></Event>
+  <System>
+    <Provider Name='Microsoft-Windows-Sysmon' Guid='{5770385f-c22a-43e0-bf4c-06f5698ffbd9}'/>
+    <EventID>10</EventID>
+    <Version>3</Version>
+    <Level>4</Level>
+    <Task>10</Task>
+    <Opcode>0</Opcode>
+    <Keywords>0x8000000000000000</Keywords>
+    <TimeCreated SystemTime='2021-01-05T03:22:52.589622600Z'/>
+    <EventRecordID>51901</EventRecordID>
+    <Correlation/>
+    <Execution ProcessID='1376' ThreadID='6928'/>
+    <Channel>Microsoft-Windows-Sysmon/Operational</Channel>
+    <Computer>THM-SOC-DC01.thm.soc</Computer>
+    <Security UserID='S-1-5-18'/>
+  </System>
+  <EventData>
+    <Data Name='RuleName'>-</Data>
+    <Data Name='UtcTime'>2021-01-05 03:22:52.581</Data>
+    <Data Name='SourceProcessGUID'>{6cd1ea62-db8c-5ff3-8b07-00000000f500}</Data>
+    <Data Name='SourceProcessId'>3604</Data>
+    <Data Name='SourceThreadId'>4292</Data>
+    <Data Name='SourceImage'>C:\Users\THM-Threat\Downloads\mimikatz.exe</Data>
+    <Data Name='TargetProcessGUID'>{6cd1ea62-b769-5fef-0c00-00000000f500}</Data>
+    <Data Name='TargetProcessId'>744</Data>
+    <Data Name='TargetImage'>C:\Windows\system32\lsass.exe</Data>
+    <Data Name='GrantedAccess'>0x1010</Data>
+    <Data Name='CallTrace'>C:\Windows\SYSTEM32\ntdll.dll+9f644|C:\Windows\System32\KERNELBASE.dll+212ae|C:\Users\THM-Threat\Downloads\mimikatz.exe+bcbda|C:\Users\THM-Threat\Downloads\mimikatz.exe+bcfb1|C:\Users\THM-Threat\Downloads\mimikatz.exe+bcb19|C:\Users\THM-Threat\Downloads\mimikatz.exe+84f28|C:\Users\THM-Threat\Downloads\mimikatz.exe+84d60|C:\Users\THM-Threat\Downloads\mimikatz.exe+84a93|C:\Users\THM-Threat\Downloads\mimikatz.exe+c39a9|C:\Windows\System32\KERNEL32.DLL+17974|C:\Windows\SYSTEM32\ntdll.dll+5a0b1</Data>
+  </EventData>
+</Event>
 ```
+
+This confirms **TargetProcessId 744 is** ``lsass.exe, and the `CallTrace` shows the Mimikatz execution chain.
+
+---
+
+### Next Step: Identify the user accounts loaded in LSASS at the time
+We need Event ID 4624 (Logon) to correlate which accounts were active in the session Mimikatz targeted.
+
+---
+
+**Command to run**:
+```powershell
+# Find logon events around the timestamp of Mimikatz execution
+Get-WinEvent -Path "C:\Users\THM-Analyst\Desktop\Scenarios\Practice\Hunting_Mimikatz.evtx" `
+| Where-Object { $_.Id -eq 4624 -and $_.TimeCreated -ge (Get-Date "2021-01-05T03:20:00Z") -and $_.TimeCreated -le (Get-Date "2021-01-05T03:25:00Z") } `
+| ForEach-Object { $_.ToXml() }
+```
+
+**No results from command above**, it seems there were no 4624 events in that EVTX file during that window. That's actually common in **Sysmon-only EVTX captures**, since 4624 is a **Windows Security log event**, not a Sysmon event.
+
+---
+
+### Next Step: Extract parent-child process relationships to see how Mimikatz was launched
+We already `mimikatz.exe` (PID 3604) was spawned by cmd.exe (PID 8092). Let's confirm all process launched by that cmd.exe session.
+
+---
+
+### Command to run:
+
+```powershell
+# List processes spawned by parent PID 8092
+Get-WinEvent -Path "C:\Users\THM-Analyst\Desktop\Scenarios\Practice\Hunting_Mimikatz.evtx" `
+| Where-Object { $_.Id -eq 1 -and $_.ToXml().Contains("ParentProcessId'>8092") } `
+| ForEach-Object { $_.ToXml() }
+```
+
+`PID 3604`
+```xml
+<Event xmlns='http://schemas.microsoft.com/win/2004/08/events/event'>
+  <System>
+    <Provider Name='Microsoft-Windows-Sysmon' Guid='{5770385f-c22a-43e0-bf4c-06f5698ffbd9}' />
+    <EventID>1</EventID>
+    <Version>5</Version>
+    <Level>4</Level>
+    <Task>1</Task>
+    <Opcode>0</Opcode>
+    <Keywords>0x8000000000000000</Keywords>
+    <TimeCreated SystemTime='2021-01-05T03:22:52.497682900Z' />
+    <EventRecordID>51900</EventRecordID>
+    <Correlation />
+    <Execution ProcessID='1376' ThreadID='6928' />
+    <Channel>Microsoft-Windows-Sysmon/Operational</Channel>
+    <Computer>THM-SOC-DC01.thm.soc</Computer>
+    <Security UserID='S-1-5-18' />
+  </System>
+  <EventData>
+    <Data Name='RuleName'>MitreRef=T1036,Technique=Masquerading,Tactic=Defense Evasion/Execution</Data>
+    <Data Name='UtcTime'>2021-01-05 03:22:52.491</Data>
+    <Data Name='ProcessGuid'>{6cd1ea62-db8c-5ff3-8b07-00000000f500}</Data>
+    <Data Name='ProcessId'>3604</Data>
+    <Data Name='Image'>C:\Users\THM-Threat\Downloads\mimikatz.exe</Data>
+    <Data Name='FileVersion'>2.2.0.0</Data>
+    <Data Name='Description'>mimikatz for Windows</Data>
+    <Data Name='Product'>mimikatz</Data>
+    <Data Name='Company'>gentilkiwi (Benjamin DELPY)</Data>
+    <Data Name='OriginalFileName'>mimikatz.exe</Data>
+    <Data Name='CommandLine'>.\mimikatz  privilege::debug sekurlsa::logonpasswords</Data>
+    <Data Name='CurrentDirectory'>C:\Users\THM-Threat\Downloads\</Data>
+    <Data Name='User'>THM\THM-Threat</Data>
+    <Data Name='LogonGuid'>{6cd1ea62-c19e-5fef-f30c-450000000000}</Data>
+    <Data Name='LogonId'>0x450cf3</Data>
+    <Data Name='TerminalSessionId'>4</Data>
+    <Data Name='IntegrityLevel'>High</Data>
+    <Data Name='Hashes'>MD5=A3CB3B02A683275F7E0A0F8A9A5C9E07,SHA256=31EB1DE7E840A342FD468E558E5AB627BCB4C542A8FE01AEC4D5BA01D539A0FC,IMPHASH=DBDEA7B557F0E6B5D9E18ABE9CE5220A</Data>
+    <Data Name='ParentProcessGuid'>{6cd1ea62-db3a-5ff3-8807-00000000f500}</Data>
+    <Data Name='ParentProcessId'>8092</Data>
+    <Data Name='ParentImage'>C:\Windows\System32\cmd.exe</Data>
+    <Data Name='ParentCommandLine'>"C:\Windows\system32\cmd.exe" </Data>
+  </EventData>
+</Event>
+```
+
+`PID 6596`
+```xml
+<Event xmlns='http://schemas.microsoft.com/win/2004/08/events/event'>
+  <System>
+    <Provider Name='Microsoft-Windows-Sysmon' Guid='{5770385f-c22a-43e0-bf4c-06f5698ffbd9}' />
+    <EventID>1</EventID>
+    <Version>5</Version>
+    <Level>4</Level>
+    <Task>1</Task>
+    <Opcode>0</Opcode>
+    <Keywords>0x8000000000000000</Keywords>
+    <TimeCreated SystemTime='2021-01-05T03:22:09.250805200Z' />
+    <EventRecordID>51875</EventRecordID>
+    <Correlation />
+    <Execution ProcessID='1376' ThreadID='6928' />
+    <Channel>Microsoft-Windows-Sysmon/Operational</Channel>
+    <Computer>THM-SOC-DC01.thm.soc</Computer>
+    <Security UserID='S-1-5-18' />
+  </System>
+  <EventData>
+    <Data Name='RuleName'>MitreRef=T1036,Technique=Masquerading,Tactic=Defense Evasion/Execution</Data>
+    <Data Name='UtcTime'>2021-01-05 03:22:09.221</Data>
+    <Data Name='ProcessGuid'>{6cd1ea62-db61-5ff3-8a07-00000000f500}</Data>
+    <Data Name='ProcessId'>6596</Data>
+    <Data Name='Image'>C:\Users\THM-Threat\Downloads\mimikatz.exe</Data>
+    <Data Name='FileVersion'>2.2.0.0</Data>
+    <Data Name='Description'>mimikatz for Windows</Data>
+    <Data Name='Product'>mimikatz</Data>
+    <Data Name='Company'>gentilkiwi (Benjamin DELPY)</Data>
+    <Data Name='OriginalFileName'>mimikatz.exe</Data>
+    <Data Name='CommandLine'>.\mimikatz  privilege::debug; sekurlsa::logonpasswords</Data>
+    <Data Name='CurrentDirectory'>C:\Users\THM-Threat\Downloads\</Data>
+    <Data Name='User'>THM\THM-Threat</Data>
+    <Data Name='LogonGuid'>{6cd1ea62-c19e-5fef-f30c-450000000000}</Data>
+    <Data Name='LogonId'>0x450cf3</Data>
+    <Data Name='TerminalSessionId'>4</Data>
+    <Data Name='IntegrityLevel'>High</Data>
+    <Data Name='Hashes'>MD5=A3CB3B02A683275F7E0A0F8A9A5C9E07,SHA256=31EB1DE7E840A342FD468E558E5AB627BCB4C542A8FE01AEC4D5BA01D539A0FC,IMPHASH=DBDEA7B557F0E6B5D9E18ABE9CE5220A</Data>
+    <Data Name='ParentProcessGuid'>{6cd1ea62-db3a-5ff3-8807-00000000f500}</Data>
+    <Data Name='ParentProcessId'>8092</Data>
+    <Data Name='ParentImage'>C:\Windows\System32\cmd.exe</Data>
+    <Data Name='ParentCommandLine'>"C:\Windows\system32\cmd.exe" </Data>
+  </EventData>
+</Event>
+```
+
+### Results:
+This confirms the process tree for `cmd.exe` (PID 8092):
+- **Parent**: `cmd.exe` (PID 8092)
+- **Children**: Two instances of `mimikatz.exe`
+    - PID 3604 → `.\mimikatz privilege::debug sekurlsa::logonpasswords`
+    - PID 6596 → `.\mimikatz privilege::debug; sekurlsa::logonpasswords`
+ 
+Both executions were run under the user `THM\Threat` in session 4, with **high integrity**. the timestamps show:
+- PID 6596: `2021-01-05 03:22:09`
+- PID 3604: `2021-01-05 03:22:52`
+
+This is consistent with `Mimikatz being executed twice in quick sucession`, likely for password extraction from `lsass.exe`.
+The **Sysmon Event ID 10** you retrieved earlier confirms the **TargetProcessId 744** (`lsass.exe`) was accessed by PID 3604, which matches the second Mimikatz execution.
+
+---
+
+### Process Tree Around PID 8092
+```yaml
+[PID 8092] cmd.exe (Parent)
+     ├── [PID 6596] mimikatz.exe
+     │       CommandLine: .\mimikatz privilege::debug; sekurlsa::logonpasswords
+     │       User: THM\THM-Threat
+     │       Integrity: High
+     │       Time: 2021-01-05 03:22:09 UTC
+     └── [PID 3604] mimikatz.exe
+             CommandLine: .\mimikatz privilege::debug sekurlsa::logonpasswords
+             User: THM\THM-Threat
+             Integrity: High
+             Time: 2021-01-05 03:22:52 UTC
+```
+
+---
+
+### Key Points:
+1. **Parent Process (cmd.exe PID 8092)**
+  - Likely an interactive command prompt session opened by the user THM-Threat.
+2. **Child Processes (Mimikatz executions)**
+  - Two separate Mimikatz executions within ~43 seconds.
+  - High integrity level indicates administrative privileges, which is required for credential dumping.
+  - Both attempts use sekurlsa::logonpasswords to extract credentials from LSASS.
+3. Security Implication
+  - This is a clear indicator of credential theft, possibly for lateral movement or privilege escalation.
+  - Mimikatz executed under the same logon session, meaning any compromised credentials belong to that session.
