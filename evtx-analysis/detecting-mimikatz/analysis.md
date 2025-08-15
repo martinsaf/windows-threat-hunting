@@ -14,7 +14,7 @@ Behavior-based detection using Sysmon Event `10` (Process Access) allows us to c
 
 ## 📁 Dataset
 - Files:
-  - `Huting_Mimikatz.evtx` - Obfuscated Mimikatz execution
+  - `Hunting_Mimikatz.evtx` - Obfuscated Mimikatz execution
 - Event Source: Sysmon
 - Tool used: `Get-WinEvent` with XPath queries
 
@@ -175,7 +175,7 @@ Extracted Data from Event ID 10
 |  **TargetImage**        |    `C:\Windows\system32\lsass.exe`                                      |
 |-------------------------|-------------------------------------------------------------------------|
 |  **TargetProcessId**    |    744                                                                  |
-|-------------------------|------------------------------------------------------------------------=|
+|-------------------------|-------------------------------------------------------------------------|
 |  **GrantedAccess**      |    `0x1010` (PROCESS_VM_READ)                                           |
 |-------------------------|-------------------------------------------------------------------------|
 |  **CallTrace**          |    `ntdll.dll`, `KERNELBASE.dll`, internal functions of `mimikatz.exe`  |
