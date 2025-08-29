@@ -82,12 +82,50 @@ Full registry key of USB device:
 HKLM\System\CurrentControlSet\Enum\WpdBusEnumRoot\UMB\2&37c186b&0&STORAGE#VOLUME#_??_USBSTOR#DISK&VEN_SANDISK&PROD_U3_CRUZER_MICRO&REV_8.01#4054910EF19005B3&0#
 ```
 
+---
 
+## 🔎 RawAccessRead Analysis (Event ID 9)
 
+### 🛠️ Hunting Query:
+```powershell
+Get-WinEvent -Path ".\Investigation-1.evtx" | 
+Where-Object { $_.Id -eq 9 } |
+Select-Object -ExpandProperty Message
+```
 
+## 📋 Findings:
+**Raw disk access events detected:**
+- **Device Accessed:** `\Device\HarddiskVolume3`
+- **Purpose:** Likely credentials dumping or direct disk manipulation
 
+## 🧩 Interpretation:
+The adversary performed raw access to the disk volume, indcating potential credential dumping activity using tools like Mimikatz or similar.
 
+## ✅ Key Answer:
+**Device name called by RawAccessRead:** `\Device\HarddiskVolume3`
 
+---
+
+## 🔎 Process Creation Analysis (Event ID 1)
+
+### 🛠️ Hunting Query:
+```powershell
+Get-WinEvent -Path ".\Investigation-1.evtx" | 
+Where-Object { $_.Id -eq 1 } |
+Sort-Object TimeCreated |
+Format-List TimeCreated, Message
+```
+
+## 📋 Findings:
+**Process chain analysis revealed:**
+- Despite corrupted log data, investigative work identified `rundll32.exe` as the first malicious process
+- The malware abused legitimate Windows binaries to evade detection
+
+## 🧩 Interpretation:
+The adversary used a multi-stage execution chain where runddl32.exe was the initial malicious process executed, leveraging Windows legitimate processes to avoid suspicion.
+
+## ✅ Key Answer:
+**First exe executed:** `rundll32.exe`
 
 
 
